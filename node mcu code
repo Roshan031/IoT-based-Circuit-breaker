@@ -1,0 +1,136 @@
+#include <ESP8266WiFi.h>
+#include <ThingSpeak.h>
+#include <Wire.h> 
+#include <LiquidCrystal_I2C.h>
+
+#define ON_Board_LED D4  
+#define LIGHT D0 
+
+const char* ssid     = "STAR FISH HOME";
+const char* password = "ibrahim1149";
+
+unsigned long channel = 2030184 ;
+
+unsigned int field1 = 1;
+
+WiFiClient  client;
+
+const int sensorIn = A0; //analog pin# A0;
+int mVperAmp = 100; // use 100 for 20A Module and 66 for 30A Module
+float Voltage = 0;
+float VRMS = 0;
+float AmpsRMS = 0;
+//int decimalPrecision=3;
+
+float getVPP()
+{
+float result;
+int readValue; //value read from the sensor
+int maxValue = 0; // store max value here
+int minValue = 1024; // store min value here
+uint32_t start_time = millis();
+while((millis()-start_time) < 1000) //sample for 3 Sec
+{
+readValue = analogRead(sensorIn);
+//see if you have a new maxValue
+if (readValue > maxValue)
+{maxValue = readValue;}
+if (readValue < minValue)
+{minValue = readValue;}
+}
+result = ((maxValue-minValue)*5.0)/1024.0;
+
+return result;
+}
+
+LiquidCrystal_I2C lcd(0x27,16,2);
+
+void setup() {
+  Serial.begin(9600);
+  delay(100);
+  
+  pinMode(ON_Board_LED, OUTPUT);  
+  pinMode(LIGHT, OUTPUT); 
+  
+  digitalWrite(ON_Board_LED, HIGH); 
+  digitalWrite(LIGHT, LOW); 
+  
+  WiFi.begin(ssid, password);
+  Serial.println("");
+  Serial.print("Connecting");
+  while (WiFi.status() != WL_CONNECTED) { 
+    Serial.print(".");
+
+    digitalWrite(ON_Board_LED, LOW);
+    delay(250);
+    digitalWrite(ON_Board_LED, HIGH);
+    delay(250);
+  }
+  digitalWrite(ON_Board_LED, HIGH); 
+  
+  Serial.println("");
+  Serial.print("Successfully connected to : ");
+  Serial.println(ssid);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("Netmask: ");
+  Serial.println(WiFi.subnetMask());
+  Serial.print("Gateway: ");
+  Serial.println(WiFi.gatewayIP());
+  
+  ThingSpeak.begin(client);
+
+  Serial.begin(9600);
+  lcd.init();             
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0,0);
+  
+       
+      
+}
+void loop() {
+  int statusCode = 0;
+  
+  int last_light_state = ThingSpeak.readFloatField(channel, field1);  
+
+  statusCode = ThingSpeak.getLastReadStatus();  
+  if(statusCode == 200){
+    if(last_light_state == 1){
+      digitalWrite(LIGHT, LOW);
+      Serial.println("LIGHT is On");
+      Voltage = getVPP();
+      VRMS = (Voltage/2.0) *0.707; //root 2 is 0.707
+      AmpsRMS = ((VRMS * 1000)/mVperAmp)-0.10;
+      AmpsRMS=abs(AmpsRMS);
+      Serial.print(AmpsRMS);
+      lcd.clear();
+      lcd.setCursor(0,1);
+      lcd.print("Current  ");
+      lcd.print(AmpsRMS);
+      lcd.print(" A");
+     
+
+//Serial.println("\tAC Current: ");
+      delay(1000);
+      //lcd.clear();
+       lcd.setCursor(1,0);
+      lcd.print("Light is ON");
+    }
+    else if(last_light_state == 0){
+      digitalWrite(LIGHT, HIGH);
+      Serial.println("LIGHT is Off");
+      lcd.clear();
+      lcd.setCursor(1,0);
+      lcd.print("Light is OFF");
+    }
+    Serial.print("The latest data from Field1 on ThingSpeak is : ");
+    Serial.println(last_light_state);    
+  }
+  else {
+    Serial.println("Problem reading channel. HTTP error code " + String(statusCode));
+  }
+  delay(15000);
+  
+
+}
